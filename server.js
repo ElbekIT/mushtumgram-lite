@@ -33,8 +33,8 @@ let tempPhone = null;
 
 console.clear();
 console.log(colors.cyan + "╔══════════════════════════════════════════════════╗" + colors.reset);
-console.log(colors.cyan + "║" + colors.bold + "           MUSHTUMGRAM SERVERI (v3.0)             " + colors.reset + colors.cyan + "║" + colors.reset);
-console.log(colors.cyan + "║" + colors.green + "           Kali Linux Hybrid Mode                 " + colors.reset + colors.cyan + "║" + colors.reset);
+console.log(colors.cyan + "║" + colors.bold + "           MUSHTUMGRAM SERVERI (v4.0)             " + colors.reset + colors.cyan + "║" + colors.reset);
+console.log(colors.cyan + "║" + colors.green + "           Kali Linux Real Mode                   " + colors.reset + colors.cyan + "║" + colors.reset);
 console.log(colors.cyan + "╚══════════════════════════════════════════════════╝" + colors.reset);
 console.log("");
 
@@ -122,6 +122,58 @@ app.post("/api/login", async (req, res) => {
     if (error.message.includes("SESSION_PASSWORD_NEEDED")) {
         return res.status(401).json({ success: false, error: "2-bosqichli parol (Cloud Password) yoqilgan. Iltimos o'chiring." });
     }
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 3-QADAM: Chatlarni yuklash (REAL TELEGRAM)
+app.get("/api/get-dialogs", async (req, res) => {
+  if (!client || !client.connected) {
+    return res.status(401).json({ success: false, error: "Mijoz ulanmagan" });
+  }
+
+  try {
+    console.log(colors.yellow + "[Jarayon] Chatlar ro'yxati yuklanmoqda..." + colors.reset);
+    
+    // Oxirgi 15 ta chatni olamiz
+    const dialogs = await client.getDialogs({ limit: 15 });
+    
+    const chatList = dialogs.map(d => ({
+      id: d.id.toString(),
+      name: d.title || d.name || "Nomsiz",
+      lastMessage: d.message ? d.message.message : "",
+      isUser: d.isUser,
+      isGroup: d.isGroup,
+      isChannel: d.isChannel,
+      unreadCount: d.unreadCount,
+      date: d.date
+    }));
+
+    console.log(colors.green + `[OK] ${chatList.length} ta chat yuklandi.` + colors.reset);
+    res.json({ success: true, chats: chatList });
+
+  } catch (error) {
+    console.error(colors.red + "[Xato] Chatlarni olishda: " + error.message + colors.reset);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 4-QADAM: Xabar yuborish (REAL TELEGRAM)
+app.post("/api/send-message", async (req, res) => {
+  const { chatId, message } = req.body;
+
+  if (!client || !client.connected) {
+    return res.status(401).json({ success: false, error: "Mijoz ulanmagan" });
+  }
+
+  try {
+    console.log(colors.blue + `[Yuborish] ID: ${chatId} -> "${message}"` + colors.reset);
+    
+    await client.sendMessage(chatId, { message: message });
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error(colors.red + "[Xato] Yuborishda: " + error.message + colors.reset);
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -5,9 +5,10 @@ import { AppState } from '../types';
 interface AuthProps {
   setAppState: (state: AppState) => void;
   setPhoneNumber: (number: string) => void;
+  setIsRealMode: (isReal: boolean) => void;
 }
 
-export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
+export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber, setIsRealMode }) => {
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [inputNumber, setInputNumber] = useState('+998');
   const [otp, setOtp] = useState('');
@@ -126,6 +127,7 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
             const data = await response.json();
             
             if (data.success) {
+                setIsRealMode(true);
                 setAppState(AppState.MESSENGER);
             } else {
                 setError(data.error || "Kod noto'g'ri");
@@ -140,7 +142,7 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
         if (otp !== '77777') {
             // Just a warning for demo, but allow entry
         }
-        
+        setIsRealMode(false);
         setTimeout(() => {
             setIsLoading(false);
             setAppState(AppState.MESSENGER);

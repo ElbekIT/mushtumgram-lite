@@ -1,12 +1,14 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Contact, Message } from '../types';
 import { getChatResponse } from '../services/geminiService';
 
 interface MessengerProps {
   currentUserPhone: string;
+  isRealMode: boolean;
 }
 
-const initialContacts: Contact[] = [
+const demoContacts: Contact[] = [
   {
     id: 'saved',
     name: 'Saved Messages',
@@ -15,7 +17,8 @@ const initialContacts: Contact[] = [
     lastMessageTime: '',
     unreadCount: 0,
     isOnline: true, // Always "online"
-    isSavedMessages: true
+    isSavedMessages: true,
+    isRealContact: false
   },
   {
     id: '1',
@@ -25,7 +28,8 @@ const initialContacts: Contact[] = [
     lastMessageTime: '10:00',
     unreadCount: 1,
     isOnline: true,
-    systemInstruction: "You are the official Mushtumgram bot. Be helpful, polite and official. Speak Uzbek."
+    systemInstruction: "You are the official Mushtumgram bot. Be helpful, polite and official. Speak Uzbek.",
+    isRealContact: false
   },
   {
     id: '2',
@@ -35,32 +39,13 @@ const initialContacts: Contact[] = [
     lastMessageTime: '09:45',
     unreadCount: 3,
     isOnline: false,
-    systemInstruction: "Sen Toshmat akasan. 45 yoshli o'zbek erkak. Choyxona, palov haqida gapirasan. Qo'polroq lekin samimiy."
+    systemInstruction: "Sen Toshmat akasan. 45 yoshli o'zbek erkak. Choyxona, palov haqida gapirasan. Qo'polroq lekin samimiy.",
+    isRealContact: false
   },
-  {
-    id: '3',
-    name: 'Dizayner Qiz',
-    avatar: 'https://picsum.photos/seed/gulnora/200/200',
-    lastMessage: 'Faylni tashlab berdim',
-    lastMessageTime: 'Yesterday',
-    unreadCount: 0,
-    isOnline: true,
-    systemInstruction: "Sen dizaynersan. Zamonaviy qizsan. Ish haqida gaplashasan."
-  },
-  {
-    id: '4',
-    name: 'Yandex Taxi',
-    avatar: 'https://picsum.photos/seed/taxi/200/200',
-    lastMessage: 'Manzilga yetib keldim',
-    lastMessageTime: 'Mon',
-    unreadCount: 0,
-    isOnline: true,
-    systemInstruction: "Sen taksistsan. Mijozni kutyapsan."
-  }
 ];
 
-export const Messenger: React.FC<MessengerProps> = ({ currentUserPhone }) => {
-  const [contacts, setContacts] = useState<Contact[]>(initialContacts);
+export const Messenger: React.FC<MessengerProps> = ({ currentUserPhone, isRealMode }) => {
+  const [contacts, setContacts] = useState<Contact[]>(demoContacts);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [inputMap, setInputMap] = useState<Record<string, string>>({});
@@ -73,6 +58,36 @@ export const Messenger: React.FC<MessengerProps> = ({ currentUserPhone }) => {
 
   const activeContact = contacts.find(c => c.id === activeChatId);
   const currentInput = activeChatId ? (inputMap[activeChatId] || '') : '';
+
+  // FETCH REAL CONTACTS
+  useEffect(() => {
+    if (isRealMode) {
+        const fetchChats = async () => {
+            try {
+                const response = await fetch('http://localhost:3000/api/get-dialogs');
+                const data = await response.json();
+                if (data.success) {
+                    const realContacts: Contact[] = data.chats.map((c: any) => ({
+                        id: c.id,
+                        name: c.name || "Nomsiz foydalanuvchi",
+                        avatar: `https://ui-avatars.com/api/?name=${c.name}&background=random`,
+                        lastMessage: c.lastMessage || "",
+                        lastMessageTime: new Date(c.date * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                        unreadCount: c.unreadCount,
+                        isOnline: false,
+                        isRealContact: true,
+                        isSavedMessages: false
+                    }));
+                    // Add Saved Messages and Bots to the list
+                    setContacts([...demoContacts, ...realContacts]);
+                }
+            } catch (e) {
+                console.error("Failed to fetch real chats", e);
+            }
+        };
+        fetchChats();
+    }
+  }, [isRealMode]);
 
   useEffect(() => {
     if (activeChatId) {
@@ -130,7 +145,32 @@ export const Messenger: React.FC<MessengerProps> = ({ currentUserPhone }) => {
         return active ? [active, ...others] : others;
     });
 
-    // If "Saved Messages", do NOT reply
+    // 1. IF REAL CONTACT -> SEND TO SERVER
+    if (activeContact.isRealContact) {
+        try {
+            await fetch('http://localhost:3000/api/send-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    chatId: activeContact.id,
+                    message: text
+                })
+            });
+            // Mark as sent/read locally
+             setMessages(prev => {
+                const chatMsgs = prev[activeChatId] || [];
+                return {
+                    ...prev,
+                    [activeChatId]: chatMsgs.map(m => m.id === newMessage.id ? {...m, status: 'read'} : m)
+                };
+            });
+        } catch (e) {
+            console.error("Failed to send real message", e);
+        }
+        return; // STOP HERE, DO NOT CALL GEMINI
+    }
+
+    // 2. IF SAVED MESSAGES -> DO NOTHING (NO REPLY)
     if (activeContact.isSavedMessages) {
       setTimeout(() => {
         setMessages(prev => {
@@ -144,7 +184,7 @@ export const Messenger: React.FC<MessengerProps> = ({ currentUserPhone }) => {
       return;
     }
 
-    // AI Response Flow
+    // 3. IF AI BOT -> CALL GEMINI
     setIsTyping(true);
 
     const chatHistory = (messages[activeChatId] || []).map(m => ({
@@ -313,7 +353,7 @@ export const Messenger: React.FC<MessengerProps> = ({ currentUserPhone }) => {
               <p>Mushtumgram Lite v1.0.2</p>
               <p className="mt-1 text-green-600 flex items-center gap-1">
                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                 Connected to DC2
+                 {isRealMode ? "REAL SERVER ONLINE" : "DEMO MODE"}
               </p>
             </div>
          </div>
@@ -517,7 +557,7 @@ export const Messenger: React.FC<MessengerProps> = ({ currentUserPhone }) => {
 
           {/* Input Area */}
           <div className="relative z-20 bg-white px-3 py-2 md:px-4 flex-shrink-0">
-             <form onSubmit={handleSendMessage} className="flex items-end gap-2 max-w-[700px] mx-auto">
+             <form onSubmit={handleSendMessage} className="flex items-end gap-2 max-w-[700px] mx-2">
                
                <button type="button" className="p-2 text-gray-400 hover:text-[#3390ec] transition rounded-full hover:bg-gray-50 self-center" title="Attach">
                   <AttachIcon />

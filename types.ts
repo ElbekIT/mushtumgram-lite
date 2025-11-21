@@ -17,6 +17,7 @@ export interface Contact {
   systemInstruction?: string; // Optional now
   phoneNumber?: string;
   isSavedMessages?: boolean; // New flag for self-chat
+  isRealContact?: boolean; // Flag to check if it is a real Telegram user
 }
 
 export enum AppState {
