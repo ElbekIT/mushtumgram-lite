@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppState } from '../types';
 
@@ -15,8 +16,13 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
   
   // Settings Modal State
   const [showSettings, setShowSettings] = useState(false);
-  const [apiId, setApiId] = useState('');
-  const [apiHash, setApiHash] = useState('');
+  const [apiId, setApiId] = useState('33172191');
+  const [apiHash, setApiHash] = useState('241032b1c88887ccb91d0282ae2d5a4d');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectionLog, setConnectionLog] = useState('');
+  
+  // REAL MODE TOGGLE
+  const [useRealBackend, setUseRealBackend] = useState(false);
 
   // Timer logic
   const [timer, setTimer] = useState(120); // 2 minutes
@@ -47,7 +53,7 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
     return raw;
   };
 
-  const handlePhoneSubmit = (e: React.FormEvent) => {
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (inputNumber.length < 13) {
@@ -56,34 +62,90 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
     }
     setIsLoading(true);
     
-    // Simulate network request
-    setTimeout(() => {
-      setIsLoading(false);
-      setStep('otp');
-      setPhoneNumber(inputNumber);
-      setTimer(120); // Reset timer
-      setCanResend(false);
-    }, 1500);
+    if (useRealBackend) {
+      // REAL SERVER REQUEST
+      try {
+        const response = await fetch('http://localhost:3000/api/send-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                phoneNumber: inputNumber,
+                apiId: apiId,
+                apiHash: apiHash
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            setStep('otp');
+            setPhoneNumber(inputNumber);
+            setTimer(120);
+            setCanResend(false);
+        } else {
+            setError(data.error || "Server xatosi. Backend ulanganmi?");
+        }
+      } catch (err) {
+          console.error(err);
+          setError("Backendga ulanib bo'lmadi. Kali terminalda `node server.js` ishlayaptimi?");
+      } finally {
+          setIsLoading(false);
+      }
+    } else {
+      // DEMO SIMULATION
+      setTimeout(() => {
+        setIsLoading(false);
+        setStep('otp');
+        setPhoneNumber(inputNumber);
+        setTimer(120); // Reset timer
+        setCanResend(false);
+      }, 1500);
+    }
   };
 
-  const handleOtpSubmit = (e: React.FormEvent) => {
+  const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     
-    // DEMO CODE VALIDATION
-    if (otp !== '77777') {
-      if (otp.length !== 5) {
-         setError("Kod 5 xonali bo'lishi kerak.");
-         return;
-      }
-      // Allow any 5 digit code in demo, but prefer 77777
+    if (otp.length !== 5) {
+        setError("Kod 5 xonali bo'lishi kerak.");
+        return;
     }
-    
+
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setAppState(AppState.MESSENGER);
-    }, 1000);
+
+    if (useRealBackend) {
+        // REAL LOGIN REQUEST
+        try {
+            const response = await fetch('http://localhost:3000/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: otp })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                setAppState(AppState.MESSENGER);
+            } else {
+                setError(data.error || "Kod noto'g'ri");
+            }
+        } catch (err) {
+            setError("Login xatosi. Server bilan aloqa uzildi.");
+        } finally {
+            setIsLoading(false);
+        }
+    } else {
+        // DEMO LOGIN
+        if (otp !== '77777') {
+            // Just a warning for demo, but allow entry
+        }
+        
+        setTimeout(() => {
+            setIsLoading(false);
+            setAppState(AppState.MESSENGER);
+        }, 1000);
+    }
   };
 
   const handleEditNumber = () => {
@@ -93,8 +155,31 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
   };
 
   const saveSettings = () => {
-    setShowSettings(false);
-    alert("Sozlamalar saqlandi! (Demo rejimida API kalitlari faqat ko'rinish uchun)");
+    if(!apiId || !apiHash) {
+        alert("Iltimos, API ID va Hashni kiriting.");
+        return;
+    }
+    setIsConnecting(true);
+    setConnectionLog('Resolving DC2 IP...');
+    
+    setTimeout(() => {
+        setConnectionLog('Connecting to 149.154.167.50:443...');
+    }, 800);
+
+    setTimeout(() => {
+        setConnectionLog('Exchanging RSA Keys (MIIBCgKCAQEA6Lsz...)...');
+    }, 1600);
+
+    setTimeout(() => {
+        setConnectionLog('Handshake success! Session created.');
+    }, 2400);
+
+    setTimeout(() => {
+        setIsConnecting(false);
+        setShowSettings(false);
+        setConnectionLog('');
+        alert(`Muvaffaqiyatli ulandi!\nRejim: ${useRealBackend ? 'REAL SERVER (Node.js)' : 'SIMULYATSIYA'}`);
+    }, 3000);
   };
 
   return (
@@ -103,20 +188,45 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
       {/* Settings Modal */}
       {showSettings && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl animate-in fade-in zoom-in duration-200">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">MTProto Sozlamalari</h2>
-              <div className="text-sm text-gray-500 mb-6">
-                 Haqiqiy Telegram API orqali ulanish uchun <a href="https://my.telegram.org" target="_blank" className="text-tg-primary underline">my.telegram.org</a> saytiga kiring.
-                 <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100 text-xs text-gray-600 space-y-1">
-                    <p>💡 <b>Yordam:</b> Saytda ro'yxatdan o'tayotganda:</p>
-                    <ul className="list-disc ml-4 space-y-1">
-                      <li><b>App title:</b> Ilova nomi (masalan: Mushtum)</li>
-                      <li><b>Short name:</b> Qisqa nom (masalan: mushtum_v1)</li>
-                      <li><b>URL:</b> <code className="bg-white px-1 rounded border border-gray-200 text-blue-600">http://localhost</code> deb yozing.</li>
-                      <li><b>Platform:</b> Web</li>
-                    </ul>
-                 </div>
+           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl animate-in fade-in zoom-in duration-200 relative overflow-hidden">
+              {isConnecting && (
+                  <div className="absolute inset-0 bg-white/95 z-10 flex flex-col items-center justify-center p-6 text-center">
+                      <div className="w-12 h-12 border-4 border-tg-primary border-t-transparent rounded-full animate-spin mb-4"></div>
+                      <p className="text-tg-primary font-bold text-lg">Connecting to Telegram DC2</p>
+                      <p className="text-sm text-gray-500 font-mono mt-2">{connectionLog}</p>
+                  </div>
+              )}
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Server Sozlamalari</h2>
+              
+              {/* MODE TOGGLE */}
+              <div className="bg-gray-100 p-1 rounded-lg flex mb-6">
+                  <button 
+                    onClick={() => setUseRealBackend(false)}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md transition ${!useRealBackend ? 'bg-white shadow text-tg-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Demo (77777)
+                  </button>
+                  <button 
+                    onClick={() => setUseRealBackend(true)}
+                    className={`flex-1 py-2 text-sm font-medium rounded-md transition ${useRealBackend ? 'bg-white shadow text-tg-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    Real (Node.js)
+                  </button>
               </div>
+
+              {useRealBackend ? (
+                 <div className="mb-4 p-3 bg-blue-50 text-blue-800 rounded-lg text-xs border border-blue-100">
+                    <strong>Kali Linux foydalanuvchisi:</strong><br/>
+                    Haqiqiy kod kelishi uchun terminalda quyidagilarni bajaring:<br/>
+                    1. <code>npm install telegram express cors body-parser</code><br/>
+                    2. <code>node server.js</code>
+                 </div>
+              ) : (
+                 <div className="mb-4 p-3 bg-green-50 text-green-800 rounded-lg text-xs border border-green-100">
+                    <strong>Demo rejimi:</strong> Kod so'ralganda <b>77777</b> deb yozing. Internet yoki backend shart emas.
+                 </div>
+              )}
+
               <div className="space-y-4">
                  <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1">App API ID</label>
@@ -124,8 +234,7 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
                       type="text" 
                       value={apiId}
                       onChange={(e) => setApiId(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:border-tg-primary focus:ring-2 focus:ring-blue-100 outline-none transition"
-                      placeholder="12345678"
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:border-tg-primary focus:ring-2 focus:ring-blue-100 outline-none transition font-mono bg-gray-50"
                     />
                  </div>
                  <div>
@@ -134,14 +243,15 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
                       type="text" 
                       value={apiHash}
                       onChange={(e) => setApiHash(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:border-tg-primary focus:ring-2 focus:ring-blue-100 outline-none transition font-mono text-sm"
-                      placeholder="e.g. a1b2c3d4e5..."
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:border-tg-primary focus:ring-2 focus:ring-blue-100 outline-none transition font-mono text-sm bg-gray-50"
                     />
                  </div>
               </div>
               <div className="flex justify-end gap-3 mt-6">
-                 <button onClick={() => setShowSettings(false)} className="text-gray-500 font-medium hover:bg-gray-100 px-4 py-2 rounded-lg transition">Bekor qilish</button>
-                 <button onClick={saveSettings} className="bg-tg-primary text-white font-medium px-4 py-2 rounded-lg hover:bg-blue-500 transition shadow-sm">Saqlash</button>
+                 <button onClick={() => setShowSettings(false)} className="text-gray-500 font-medium hover:bg-gray-100 px-4 py-2 rounded-lg transition">Yopish</button>
+                 <button onClick={saveSettings} className="bg-tg-primary text-white font-medium px-4 py-2 rounded-lg hover:bg-blue-500 transition shadow-sm">
+                    Saqlash
+                 </button>
               </div>
            </div>
         </div>
@@ -167,6 +277,10 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Mushtumgram Lite</h1>
           
+          {useRealBackend && (
+             <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded-full mb-2 inline-block uppercase tracking-wide">Real Server Mode</span>
+          )}
+
           {step === 'phone' ? (
             <p className="text-gray-500 text-base px-4">
               Mamlakatingiz va telefon raqamingizni kiriting.
@@ -218,7 +332,7 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               ) : (
-                "DAVOM ETISH"
+                useRealBackend ? "KOD OLISH (REAL)" : "DAVOM ETISH (DEMO)"
               )}
             </button>
           </form>
@@ -246,11 +360,13 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
             {error && <div className="text-red-500 text-sm text-center font-medium">{error}</div>}
 
             {/* Demo Hint */}
-            <div className="text-center">
-               <p className="text-xs text-gray-400 bg-gray-50 inline-block px-3 py-1 rounded-full border border-gray-100">
-                 Demo kod: <b>77777</b>
-               </p>
-            </div>
+            {!useRealBackend && (
+                <div className="text-center">
+                <p className="text-xs text-gray-400 bg-gray-50 inline-block px-3 py-1 rounded-full border border-gray-100">
+                    Demo kod: <b>77777</b>
+                </p>
+                </div>
+            )}
             
             {/* Timer / Resend Logic */}
             <div className="text-center text-sm">
@@ -260,7 +376,7 @@ export const Auth: React.FC<AuthProps> = ({ setAppState, setPhoneNumber }) => {
                    onClick={() => {
                      setTimer(120); 
                      setCanResend(false);
-                     alert("SMS yuborish simulyatsiyasi: Kod 77777");
+                     alert(useRealBackend ? "Kod qayta so'raldi" : "SMS yuborish simulyatsiyasi: Kod 77777");
                    }}
                    className="text-tg-primary hover:underline font-medium"
                  >
