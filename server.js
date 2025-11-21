@@ -1,5 +1,6 @@
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
+const fs = require("fs");
 
 const { TelegramClient } = require("telegram");
 const { StringSession } = require("telegram/sessions");
@@ -14,8 +15,9 @@ app.use(cors());
 app.use(bodyParser.json());
 
 const PORT = 3000;
+const SESSION_FILE = "session.txt";
 
-// Rangli loglar (Kali Linux terminali uchun)
+// Rangli loglar
 const colors = {
   reset: "\x1b[0m",
   green: "\x1b[32m",
@@ -26,65 +28,86 @@ const colors = {
   bold: "\x1b[1m"
 };
 
-// Sessiyalarni xotirada saqlash
 let client = null; 
 let tempPhoneCodeHash = null;
 let tempPhone = null;
 
 console.clear();
 console.log(colors.cyan + "╔══════════════════════════════════════════════════╗" + colors.reset);
-console.log(colors.cyan + "║" + colors.bold + "           MUSHTUMGRAM SERVERI (v4.0)             " + colors.reset + colors.cyan + "║" + colors.reset);
-console.log(colors.cyan + "║" + colors.green + "           Kali Linux Real Mode                   " + colors.reset + colors.cyan + "║" + colors.reset);
+console.log(colors.cyan + "║" + colors.bold + "           MUSHTUMGRAM SERVERI (v5.0)             " + colors.reset + colors.cyan + "║" + colors.reset);
+console.log(colors.cyan + "║" + colors.green + "        Kali Linux & Session Persistence          " + colors.reset + colors.cyan + "║" + colors.reset);
 console.log(colors.cyan + "╚══════════════════════════════════════════════════╝" + colors.reset);
 console.log("");
+
+// Server yonganda sessiyani tiklash
+async function initClient() {
+  let sessionString = "";
+  if (fs.existsSync(SESSION_FILE)) {
+    sessionString = fs.readFileSync(SESSION_FILE, "utf8");
+    console.log(colors.yellow + "[Tizim] Saqlangan sessiya topildi. Ulanmoqda..." + colors.reset);
+  }
+
+  // Eslatma: Bu API ID/Hash o'zgaruvchan bo'lishi mumkin, lekin avtomatik ulanish uchun 
+  // oxirgi ishlatilganini saqlashimiz yoki default qiymat ishlatishimiz kerak.
+  // Oddiylik uchun default qiymat bilan boshlaymiz, login paytida yangilanadi.
+  client = new TelegramClient(
+    new StringSession(sessionString), 
+    33172191, // Default API ID
+    "241032b1c88887ccb91d0282ae2d5a4d", // Default API Hash
+    { connectionRetries: 5, useWSS: false }
+  );
+
+  if (sessionString) {
+    try {
+        await client.connect();
+        console.log(colors.green + "[OK] Avtomatik ulandi!" + colors.reset);
+    } catch (e) {
+        console.log(colors.red + "[Xato] Eski sessiya yaroqsiz: " + e.message + colors.reset);
+    }
+  }
+}
+
+initClient();
+
+// 0-QADAM: Sessiya tekshirish
+app.get("/api/check-session", async (req, res) => {
+    if (client && client.connected && await client.checkAuthorization()) {
+        res.json({ success: true });
+    } else {
+        res.json({ success: false });
+    }
+});
 
 // 1-QADAM: Kod yuborish
 app.post("/api/send-code", async (req, res) => {
   const { phoneNumber, apiId, apiHash } = req.body;
 
-  console.log(colors.blue + `[So'rov] ${colors.bold}${phoneNumber}${colors.reset}${colors.blue} raqamidan keldi...` + colors.reset);
-
-  if (!phoneNumber || !apiId || !apiHash) {
-    console.log(colors.red + "[Xato] Ma'lumotlar yetarli emas!" + colors.reset);
-    return res.status(400).json({ success: false, error: "Raqam, API ID yoki Hash yetishmayapti" });
-  }
+  console.log(colors.blue + `[So'rov] ${phoneNumber} raqamiga kod yuborilmoqda...` + colors.reset);
 
   try {
-    if (client) {
-      try { await client.disconnect(); } catch (e) {}
-    }
-
-    console.log(colors.yellow + "[Jarayon] Telegram serveriga ulanilmoqda..." + colors.reset);
+    if (client) await client.disconnect();
 
     client = new TelegramClient(
       new StringSession(""), 
       parseInt(apiId),
       apiHash,
-      {
-        connectionRetries: 5,
-        useWSS: false, 
-      }
+      { connectionRetries: 5, useWSS: false }
     );
 
     await client.connect();
-    console.log(colors.green + "[OK] Serverga ulandi!" + colors.reset);
     
     const result = await client.sendCode(
-      {
-        apiId: parseInt(apiId),
-        apiHash: apiHash,
-      },
+      { apiId: parseInt(apiId), apiHash: apiHash },
       phoneNumber
     );
 
     tempPhoneCodeHash = result.phoneCodeHash;
     tempPhone = phoneNumber;
 
-    console.log(colors.green + colors.bold + "[Muvaffaqiyat] Kod yuborildi!" + colors.reset);
-    res.json({ success: true, message: "Kod yuborildi" });
-
+    console.log(colors.green + "[OK] Kod yuborildi!" + colors.reset);
+    res.json({ success: true });
   } catch (error) {
-    console.error(colors.red + "[Xatolik] " + error.message + colors.reset);
+    console.error(colors.red + "[Xato] " + error.message + colors.reset);
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -93,11 +116,9 @@ app.post("/api/send-code", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   const { code } = req.body;
   
-  if (!client || !tempPhone || !tempPhoneCodeHash) {
-    return res.status(400).json({ success: false, error: "Oldin kod so'rang." });
+  if (!tempPhone || !tempPhoneCodeHash) {
+    return res.status(400).json({ success: false, error: "Server qayta yongan. Iltimos boshidan kod so'rang." });
   }
-
-  console.log(colors.blue + `[Login] Kod tekshirilmoqda: ${colors.bold}${code}${colors.reset}`);
 
   try {
     await client.invoke(
@@ -109,76 +130,67 @@ app.post("/api/login", async (req, res) => {
     );
 
     const sessionString = client.session.save();
-    console.log(colors.green + colors.bold + "🎉 [TABRIKLAYMIZ] Tizimga kirildi!" + colors.reset);
-    
-    res.json({ 
-      success: true, 
-      session: sessionString,
-      user: { phoneNumber: tempPhone, name: "Foydalanuvchi" }
-    });
+    fs.writeFileSync(SESSION_FILE, sessionString); // Sessiyani faylga yozish
 
+    console.log(colors.green + colors.bold + "🎉 [Login] Muvaffaqiyatli! Sessiya saqlandi." + colors.reset);
+    res.json({ success: true });
   } catch (error) {
-    console.error(colors.red + "[Xatolik] " + error.message + colors.reset);
+    console.error(colors.red + "[Xato] " + error.message + colors.reset);
     if (error.message.includes("SESSION_PASSWORD_NEEDED")) {
-        return res.status(401).json({ success: false, error: "2-bosqichli parol (Cloud Password) yoqilgan. Iltimos o'chiring." });
+        return res.status(401).json({ success: false, error: "2-bosqichli parol yoqilgan." });
     }
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// 3-QADAM: Chatlarni yuklash (REAL TELEGRAM)
+// 3-QADAM: Chatlarni yuklash
 app.get("/api/get-dialogs", async (req, res) => {
   if (!client || !client.connected) {
-    return res.status(401).json({ success: false, error: "Mijoz ulanmagan" });
+    // Qayta ulanib ko'rish
+    if (fs.existsSync(SESSION_FILE)) {
+        console.log(colors.yellow + "[Info] Qayta ulanishga harakat..." + colors.reset);
+        await initClient();
+    }
+    if (!client || !client.connected) {
+        return res.status(401).json({ success: false, error: "Mijoz ulanmagan" });
+    }
   }
 
   try {
-    console.log(colors.yellow + "[Jarayon] Chatlar ro'yxati yuklanmoqda..." + colors.reset);
-    
-    // Oxirgi 15 ta chatni olamiz
-    const dialogs = await client.getDialogs({ limit: 15 });
+    console.log(colors.yellow + "[Yuklash] Chatlar olinmoqda..." + colors.reset);
+    const dialogs = await client.getDialogs({ limit: 20 });
     
     const chatList = dialogs.map(d => ({
       id: d.id.toString(),
       name: d.title || d.name || "Nomsiz",
       lastMessage: d.message ? d.message.message : "",
-      isUser: d.isUser,
-      isGroup: d.isGroup,
-      isChannel: d.isChannel,
       unreadCount: d.unreadCount,
-      date: d.date
+      date: d.date,
+      isUser: d.isUser
     }));
 
-    console.log(colors.green + `[OK] ${chatList.length} ta chat yuklandi.` + colors.reset);
+    console.log(colors.green + `[OK] ${chatList.length} ta chat yuborildi.` + colors.reset);
     res.json({ success: true, chats: chatList });
-
   } catch (error) {
-    console.error(colors.red + "[Xato] Chatlarni olishda: " + error.message + colors.reset);
+    console.error(colors.red + "[Xato] " + error.message + colors.reset);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// 4-QADAM: Xabar yuborish (REAL TELEGRAM)
+// 4-QADAM: Xabar yuborish
 app.post("/api/send-message", async (req, res) => {
   const { chatId, message } = req.body;
-
-  if (!client || !client.connected) {
-    return res.status(401).json({ success: false, error: "Mijoz ulanmagan" });
-  }
+  if (!client || !client.connected) return res.status(401).json({ success: false });
 
   try {
-    console.log(colors.blue + `[Yuborish] ID: ${chatId} -> "${message}"` + colors.reset);
-    
+    console.log(colors.blue + `[SMS] ${chatId}: ${message}` + colors.reset);
     await client.sendMessage(chatId, { message: message });
-    
     res.json({ success: true });
   } catch (error) {
-    console.error(colors.red + "[Xato] Yuborishda: " + error.message + colors.reset);
     res.status(500).json({ success: false, error: error.message });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`\n🚀 Server tayyor: ${colors.blue}${colors.bold}http://localhost:${PORT}${colors.reset}`);
-  console.log(colors.yellow + "Agar xatolik chiqsa, terminalda `npm install` deb yozing." + colors.reset);
+  console.log(`\n🚀 Server: http://localhost:${PORT}`);
 });
