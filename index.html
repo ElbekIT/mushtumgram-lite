@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="uz">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Mushtumgram</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              tg: {
+                bg: '#212121', 
+                sidebar: '#ffffff',
+                sidebarActive: '#3390ec', // Telegram Active Blue
+                primary: '#3390ec', 
+                secondary: '#8774e1',
+                light: '#f1f1f1',
+                surface: '#ffffff',
+                chatOut: '#eeffde', // Light green for sent messages
+                chatIn: '#ffffff',
+                text: '#000000',
+                meta: '#aeb7c2', // Timestamp color
+                border: '#dfe1e5',
+                input: '#f4f4f5'
+              },
+            },
+            fontFamily: {
+              sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', 'sans-serif'],
+            }
+          },
+        },
+      };
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #fff;
+        overflow: hidden; /* Prevent pull-to-refresh on mobile */
+      }
+      /* Hide scrollbar for Chrome, Safari and Opera */
+      .no-scrollbar::-webkit-scrollbar {
+          display: none;
+      }
+      /* Hide scrollbar for IE, Edge and Firefox */
+      .no-scrollbar {
+          -ms-overflow-style: none;  /* IE and Edge */
+          scrollbar-width: none;  /* Firefox */
+      }
+      
+      /* Telegram Chat Background Pattern */
+      .tg-pattern {
+        background-color: #87a7bf;
+        background-image: url("https://web.telegram.org/a/chat-bg-pattern-light.ee148af9446658029011.png");
+        background-size: 450px;
+        background-repeat: repeat;
+      }
+      
+      .message-shadow {
+        box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
